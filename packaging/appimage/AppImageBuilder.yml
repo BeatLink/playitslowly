@@ -59,14 +59,15 @@ AppDir:
       - usr/share/info
 
   runtime:
+    # Quoted, so ${APPDIR} is left for the AppImage to fill in when it starts.
     env:
-      PYTHONHOME: ${APPDIR}/usr
-      PYTHONPATH: ${APPDIR}/usr/lib/python3/dist-packages
-      PATH: ${APPDIR}/usr/bin:${PATH}
-      GI_TYPELIB_PATH: ${APPDIR}/usr/lib/x86_64-linux-gnu/girepository-1.0
-      GSETTINGS_SCHEMA_DIR: ${APPDIR}/usr/share/glib-2.0/schemas
-      GST_PLUGIN_SYSTEM_PATH_1_0: ${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer-1.0
-      GST_PLUGIN_SCANNER_1_0: ${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner
+      PYTHONHOME: '${APPDIR}/usr'
+      PYTHONPATH: '${APPDIR}/usr/lib/python3/dist-packages'
+      PATH: '${APPDIR}/usr/bin:${PATH}'
+      GI_TYPELIB_PATH: '${APPDIR}/usr/lib/x86_64-linux-gnu/girepository-1.0'
+      GSETTINGS_SCHEMA_DIR: '${APPDIR}/usr/share/glib-2.0/schemas'
+      GST_PLUGIN_SYSTEM_PATH_1_0: '${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer-1.0'
+      GST_PLUGIN_SCANNER_1_0: '${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner'
 
 AppImage:
   arch: x86_64

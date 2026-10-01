@@ -20,12 +20,12 @@ if [ "$status" -ne 124 ]; then
     echo "smoke test: expected the app to keep running, but it exited with $status" >&2
     exit 1
 fi
-if grep -qE "Traceback|Waveform load error|CRITICAL" "$dir/log"; then
+if grep -qE "Traceback|Waveform load error|CRITICAL|GStreamer error" "$dir/log"; then
     echo "smoke test: errors in the output" >&2
     exit 1
 fi
 if ! grep -q '"duration": 3' "$dir/.config/playitslowly.json" 2>/dev/null; then
-    echo "smoke test: the test tone was not loaded" >&2
+    echo "smoke test: the test tone was not loaded; config was:" >&2; cat "$dir/.config/playitslowly.json" >&2 2>/dev/null
     exit 1
 fi
 echo "smoke test: passed"

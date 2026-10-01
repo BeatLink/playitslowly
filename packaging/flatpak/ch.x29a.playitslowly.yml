@@ -30,6 +30,8 @@ modules:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_SHARED_LIBS=ON
       - -DSOUNDSTRETCH=OFF
+      # Its CMakeLists.txt asks for a CMake version the SDK no longer supports.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     cleanup:
       - /include
       - /lib/cmake

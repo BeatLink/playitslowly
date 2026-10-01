@@ -157,6 +157,8 @@ class Pipeline(Gst.Pipeline):
         elif t == Gst.MessageType.TAG:
             self.tags(message.parse_tag())
         elif t == Gst.MessageType.ERROR:
+            error, debug = message.parse_error()
+            print("GStreamer error: %s (%s)" % (error.message, debug), file=sys.stderr)
             # One broken file posts several errors, so show only the first.
             if not self.error_shown:
                 self.error_shown = True

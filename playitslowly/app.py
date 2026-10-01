@@ -34,10 +34,11 @@ import gi
 gi.require_version('Gst', '1.0')
 gi.require_version('Gtk', '3.0')
 
-from gi.repository import Gtk, GObject, Gst, Gio, Gdk
+from gi.repository import Gtk, GObject, Gst, Gio, Gdk, GLib
 
 GObject.threads_init()
 Gst.init(None)
+GLib.set_prgname("ch.x29a.playitslowly")
 
 from playitslowly.pipeline import Pipeline
 

@@ -3,3 +3,6 @@ dist
 build
 MANIFEST
 *.swp
+__pycache__
+result
+result-*

@@ -1,0 +1,47 @@
+# Runs the test suite on Ubuntu and in the Nix sandbox, and validates the metadata files.
+name: Tests
+
+on:
+  push:
+    branches: [master, "worktree-*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-gi python3-gi-cairo python3-numpy python3-pytest \
+            gir1.2-gtk-3.0 gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+      - name: Test
+        run: xvfb-run -a python3 -m pytest -v -p no:cacheprovider tests
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils shellcheck
+      - name: Validate
+        run: |
+          appstreamcli validate --no-net share/metainfo/ch.x29a.playitslowly.metainfo.xml
+          desktop-file-validate share/applications/ch.x29a.playitslowly.desktop
+          python3 -m compileall -q playitslowly tests packaging
+          shellcheck packaging/smoke-test.sh
+
+  nix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Run the test suite in the sandbox
+        run: nix flake check -L
+      - name: Build and start
+        run: |
+          nix build -L .#default
+          nix shell nixpkgs#xvfb-run -c packaging/smoke-test.sh ./result/bin/playitslowly

@@ -25,6 +25,10 @@
         };
       });
 
+      checks = forAllSystems (pkgs: {
+        tests = pkgs.callPackage ./nix/tests.nix { };
+      });
+
       overlays.default = final: _prev: {
         playitslowly = final.callPackage ./nix/package.nix { };
       };

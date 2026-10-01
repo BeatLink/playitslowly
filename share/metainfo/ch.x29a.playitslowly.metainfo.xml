@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ch.x29a.playitslowly</id>
+  <launchable type="desktop-id">ch.x29a.playitslowly.desktop</launchable>
+  <provides>
+    <id>playitslowly.desktop</id>
+    <binary>playitslowly</binary>
+  </provides>
+  <name>Play it Slowly</name>
+  <summary>Play music slower or at another pitch to practise and transcribe</summary>
+  <developer id="ch.x29a">
+    <name>Jonas Wagner and contributors</name>
+  </developer>
+  <description>
+    <p>
+      Play it Slowly plays an audio file at a different speed without changing its pitch, or at a
+      different pitch without changing its speed. It helps musicians learn and transcribe music.
+    </p>
+    <ul>
+      <li>Speed, pitch in semitones and fine pitch in cents</li>
+      <li>Loop a section, with a waveform and buttons to nudge the loop points</li>
+      <li>Balance, left/right and mid/side modes to bring out or remove vocals and instruments</li>
+      <li>A count-in before playing, keyboard and number pad shortcuts</li>
+      <li>Download the audio of a YouTube video to practise with</li>
+      <li>Save the result as WAV, MP3, Ogg Vorbis or FLAC</li>
+    </ul>
+  </description>
+  <url type="homepage">https://github.com/BeatLink/playitslowly</url>
+  <url type="bugtracker">https://github.com/BeatLink/playitslowly/issues</url>
+  <url type="vcs-browser">https://github.com/BeatLink/playitslowly</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+  <content_rating type="oars-1.1" />
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A song slowed down, with a loop section on the waveform</caption>
+      <image>https://raw.githubusercontent.com/BeatLink/playitslowly/master/data/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+  <project_license>GPL-3.0-or-later</project_license>
+  <metadata_license>CC0-1.0</metadata_license>
+  <releases>
+    <release version="1.6.0" date="2026-09-30">
+      <description>
+        <p>The first release of the maintained fork:</p>
+        <ul>
+          <li>Runs on current systems with GTK 3, Python 3.14 and GStreamer 1.28</li>
+          <li>A waveform display with draggable loop markers</li>
+          <li>Balance modes, a count-in, a loop switch, a limiter and new keyboard shortcuts</li>
+          <li>YouTube audio download, drag and drop, and MP3, Ogg and FLAC export</li>
+          <li>Fixed looping at the end of a track, rewinding by seconds and the end position after loading</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.5.1" date="2016-05-21">
+      <description>
+        <p>This is a bug fix release:</p>
+        <ul>
+          <li>Fixed config loading</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.5.0" date="2016-05-21">
+      <description>
+        <p>This is a major release:</p>
+        <ul>
+          <li>Updated to Python3, GTK3 and GStreamer 1.0</li>
+          <li>Minor design cleanup</li>
+          <li>Fixed a bug where the file chooser would not show the currently selected file</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.4.0" date="2011-07-03" />
+    <release version="1.3.1" date="2010-12-08" />
+    <release version="1.3.0" date="2010-07-04" />
+    <release version="1.2.0" date="2009-05-23" />
+    <release version="1.1.0" date="2009-01-08" />
+    <release version="1.0.0" date="2008-12-11" />
+  </releases>
+</component>

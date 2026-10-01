@@ -12,7 +12,7 @@
 
 python3Packages.buildPythonApplication {
   pname = "playitslowly";
-  version = "1.5.1";
+  version = "1.6.0";
   pyproject = false;
 
   src = lib.cleanSource ./..;
@@ -37,15 +37,11 @@ python3Packages.buildPythonApplication {
   dependencies = with python3Packages; [
     pygobject3
     numpy
-    pydub
   ];
 
-  # setup.py needs distutils, which current Python no longer ships, so install the files directly.
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/bin $out/${python3Packages.python.sitePackages}
-    cp -r playitslowly $out/${python3Packages.python.sitePackages}/
-    cp -r share $out/
+    make install PREFIX=$out PYTHONDIR=$out/${python3Packages.python.sitePackages}
     # A Python launcher, so the Python wrapper picks it up; it skips the shell script in bin/.
     cat > $out/bin/playitslowly <<EOF
     #!${python3Packages.python.interpreter}
@@ -58,7 +54,7 @@ python3Packages.buildPythonApplication {
 
   # Wrap once, with both the GApps and the Python environment.
   dontWrapGApps = true;
-  # pydub decodes the waveform by running ffmpeg, and the YouTube dialog runs yt-dlp.
+  # The YouTube dialog runs yt-dlp, which uses ffmpeg to strip the video container and tag the audio.
   # Desktops such as Cinnamon export a PYTHONPATH whose pygobject clashes with ours and breaks the window.
   preFixup = ''
     makeWrapperArgs+=("''${gappsWrapperArgs[@]}" --unset PYTHONPATH --prefix PATH : ${lib.makeBinPath [ ffmpeg yt-dlp ]})

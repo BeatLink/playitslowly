@@ -36,11 +36,14 @@ class Download:
         self.output = []
         self.cancelled = False
         os.makedirs(download_dir(), exist_ok=True)
-        # Opus in its own container needs no re-encoding, and GStreamer and ffmpeg both play it.
-        argv = [YTDLP, "--newline", "--progress", "--no-playlist", "--embed-metadata",
-                "-f", "bestaudio[acodec=opus]/bestaudio", "-x",
+        # Opus needs no re-encoding and GStreamer plays it in any container.
+        argv = [YTDLP, "--newline", "--progress", "--no-playlist", "-f", "bestaudio[acodec=opus]/bestaudio",
                 "-o", os.path.join(download_dir(), "%(title)s [%(id)s].%(ext)s"),
-                "--print", "after_move:filepath", url]
+                "--print", "after_move:filepath"]
+        # With ffmpeg, yt-dlp drops the video container and writes the title and artist tags.
+        if shutil.which("ffmpeg"):
+            argv += ["-x", "--embed-metadata"]
+        argv.append(url)
         self.process = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
         self.stream = Gio.DataInputStream.new(self.process.get_stdout_pipe())
         self.stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_line)

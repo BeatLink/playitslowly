@@ -55,8 +55,8 @@ myGtk.install()
 _ = lambda s: s # may be add gettext later
 
 NAME = "Play it Slowly"
-VERSION = "1.5.1"
-WEBSITE = "http://29a.ch/playitslowly/"
+VERSION = "1.6.0"
+WEBSITE = "https://github.com/BeatLink/playitslowly"
 
 if sys.platform == "win32":
     CONFIG_PATH = os.path.expanduser("~/playitslowly.json")
@@ -610,14 +610,14 @@ class MainWindow(Gtk.Window):
         self.waveform_area.queue_draw()
         path = Gio.File.new_for_uri(uri).get_path() if uri else None
         if not path:
-            # Remote files still play, they just have no waveform.
+            # Remote files still play but get no waveform, since a stream may never end.
             return
         threading.Thread(target=self.extract_waveform, args=(uri, path), daemon=True).start()
 
     def extract_waveform(self, uri, path):
         try:
             from playitslowly.waveform import WaveformExtractor
-            samples = WaveformExtractor(path).get_samples(50000)
+            samples = WaveformExtractor(uri).get_samples(50000)
         except Exception as e:
             logging.error(f"Waveform load error: {e}")
             return

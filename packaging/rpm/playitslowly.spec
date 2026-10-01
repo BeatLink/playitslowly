@@ -1,5 +1,5 @@
 Name:           playitslowly
-Version:        1.6.0
+Version:        1.6.1
 Release:        1%{?dist}
 Summary:        Play music slower or at another pitch for practice
 License:        GPL-3.0-or-later
@@ -53,5 +53,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/ch.x29a.playit
 %{_datadir}/icons/hicolor/*/apps/ch.x29a.playitslowly.*
 
 %changelog
+* Thu Oct 01 2026 Play it Slowly maintainers <BeatLink@users.noreply.github.com> - 1.6.1-1
+- Label the waveform height slider
+
 * Wed Sep 30 2026 Play it Slowly maintainers <BeatLink@users.noreply.github.com> - 1.6.0-1
 - First release of the maintained fork

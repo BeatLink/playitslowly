@@ -1,3 +1,9 @@
+playitslowly (1.6.1) unstable; urgency=medium
+
+  * Label the waveform height slider.
+
+ -- Play it Slowly maintainers <BeatLink@users.noreply.github.com>  Thu, 01 Oct 2026 12:00:00 +0000
+
 playitslowly (1.6.0) unstable; urgency=medium
 
   * First release of the maintained fork: runs on current systems, adds a

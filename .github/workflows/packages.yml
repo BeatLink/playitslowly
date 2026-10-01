@@ -23,6 +23,10 @@ jobs:
         run: |
           sudo apt-get install -y ./dist/playitslowly_*.deb
           packaging/smoke-test.sh playitslowly
+      - name: YouTube download
+        # YouTube often blocks CI servers and distro yt-dlp versions fall behind, so this only warns.
+        continue-on-error: true
+        run: xvfb-run -a python3 packaging/check-youtube.py
       - uses: actions/upload-artifact@v4
         with:
           name: deb
@@ -47,6 +51,10 @@ jobs:
         run: |
           dnf install -y ./dist/*.rpm
           packaging/smoke-test.sh playitslowly
+      - name: YouTube download
+        # YouTube often blocks CI servers and distro yt-dlp versions fall behind, so this only warns.
+        continue-on-error: true
+        run: xvfb-run -a python3 packaging/check-youtube.py
       - uses: actions/upload-artifact@v4
         with:
           name: rpm
@@ -72,6 +80,10 @@ jobs:
           # GNOME 50 decodes icons in a nested sandbox, which this container cannot create, so the window
           # cannot open here; check the audio pipeline headlessly inside the installed Flatpak instead.
           flatpak run --filesystem="$GITHUB_WORKSPACE" --command=python3 ch.x29a.playitslowly "$GITHUB_WORKSPACE/packaging/check-pipeline.py"
+      - name: YouTube download
+        # YouTube often blocks CI servers and distro yt-dlp versions fall behind, so this only warns.
+        continue-on-error: true
+        run: flatpak run --filesystem="$GITHUB_WORKSPACE" --command=python3 ch.x29a.playitslowly "$GITHUB_WORKSPACE/packaging/check-youtube.py"
 
   appimage:
     runs-on: ubuntu-24.04
@@ -106,6 +118,14 @@ jobs:
           path: dist/*.AppImage
       - name: Start
         run: SMOKE_TIMEOUT=90 packaging/smoke-test.sh dist/*.AppImage --appimage-extract-and-run
+      - name: YouTube download
+        # YouTube often blocks CI servers and distro yt-dlp versions fall behind, so this only warns.
+        continue-on-error: true
+        run: |
+          # Run the check with the AppImage's own Python and libraries from an extracted copy.
+          ./dist/*.AppImage --appimage-extract > /dev/null
+          sed -i "s|^APPDIR_EXEC_ARGS=.*|APPDIR_EXEC_ARGS=-P $GITHUB_WORKSPACE/packaging/check-youtube.py|" squashfs-root/AppRun.env
+          xvfb-run -a squashfs-root/AppRun
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

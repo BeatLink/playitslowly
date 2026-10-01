@@ -12,7 +12,7 @@
 
 python3Packages.buildPythonApplication {
   pname = "playitslowly";
-  version = "1.6.0";
+  version = "1.6.1";
   pyproject = false;
 
   src = lib.cleanSource ./..;

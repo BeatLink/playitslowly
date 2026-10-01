@@ -55,7 +55,7 @@ myGtk.install()
 _ = lambda s: s # may be add gettext later
 
 NAME = "Play it Slowly"
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 WEBSITE = "https://github.com/BeatLink/playitslowly"
 
 if sys.platform == "win32":
@@ -161,7 +161,10 @@ class MainWindow(Gtk.Window):
         self.waveform_height_scale.set_value(1.0)
         self.waveform_height_scale.set_digits(1)
         self.waveform_height_scale.connect("value-changed", lambda w: self.waveform_area.queue_draw())
-        self.vbox.pack_start(self.waveform_height_scale, False, False, 2)
+        heightbox = Gtk.HBox()
+        heightbox.pack_start(Gtk.Label(label=_("Waveform height")), False, False, 4)
+        heightbox.pack_start(self.waveform_height_scale, True, True, 0)
+        self.vbox.pack_start(heightbox, False, False, 2)
 
         self.dragging_marker = None  # "start", "end" or None
 

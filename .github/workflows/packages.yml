@@ -80,7 +80,7 @@ jobs:
       - name: Install appimage-builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv python3-pip patchelf desktop-file-utils libgdk-pixbuf2.0-dev fakeroot squashfs-tools strace gtk-update-icon-cache zsync xvfb
+          sudo apt-get install -y shared-mime-info libglib2.0-bin python3-venv python3-pip patchelf desktop-file-utils libgdk-pixbuf2.0-dev fakeroot squashfs-tools strace gtk-update-icon-cache zsync xvfb
           # Its own environment, since it needs an older "packaging" than Ubuntu ships.
           python3 -m venv ~/appimage-builder
           ~/appimage-builder/bin/pip install appimage-builder==1.1.0 "packaging<22"
@@ -93,6 +93,11 @@ jobs:
           sed -i "s/^APPDIR_LIBC_LINKER_PATH={'\(.*\)'}$/APPDIR_LIBC_LINKER_PATH=\1/" AppDir/AppRun.env
           # On hosts with an older or equal glibc AppRun loads the bundled loader from runtime/compat/lib64.
           [ -e AppDir/runtime/compat/lib64 ] || ln -s usr/lib64 AppDir/runtime/compat/lib64
+          # Packages are copied without running their install scripts, so build the caches those would create;
+          # without the MIME database GTK cannot tell what kind of image an icon is.
+          update-mime-database AppDir/usr/share/mime
+          glib-compile-schemas AppDir/usr/share/glib-2.0/schemas
+          gtk-update-icon-cache -f -t AppDir/usr/share/icons/hicolor || true
           appimage-builder --recipe packaging/appimage/AppImageBuilder.yml --skip-script --skip-build --skip-test
           mkdir -p dist && mv ./*.AppImage dist/
       - uses: actions/upload-artifact@v4

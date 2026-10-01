@@ -42,10 +42,11 @@ AppDir:
       - librsvg2-common
       - libgtk-3-common
       - adwaita-icon-theme
+      - hicolor-icon-theme
+      - shared-mime-info
       - ffmpeg
     exclude:
       - humanity-icon-theme
-      - hicolor-icon-theme
       - dmsetup
       - systemd
       - libsystemd0

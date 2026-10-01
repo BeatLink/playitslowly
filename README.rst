@@ -98,6 +98,15 @@ Pass a GStreamer sink with ``--sink``, for example::
   playitslowly "--sink=alsasink device=hw:1"
   playitslowly --sink=pipewiresink
 
+Testing
+=======
+The tests play into silent sinks, so they need a display but no sound card::
+
+  xvfb-run -a python3 -m pytest tests
+
+They need pytest plus the dependencies listed under "From source". With Nix,
+``nix flake check`` runs them in the build sandbox. CI runs them on every push.
+
 Building packages
 =================
 GitHub Actions builds and starts every package on each push, see

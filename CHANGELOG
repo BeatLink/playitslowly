@@ -1,3 +1,19 @@
+playitslowly 1.6.0
+==================
+First release of the maintained fork (github.com/BeatLink/playitslowly).
+* Runs on current systems: GTK 3 pinned, Python 3.14, GStreamer 1.28
+* Waveform display with zoom and draggable loop markers (thanks Mauro Passerino)
+* Total time in the clock (thanks kenhuang-io), app id for Wayland (thanks City-busz),
+  better appdata (thanks Mathieu Bridon)
+* Balance, left/right and mid/side modes, a limiter and a count-in
+* A loop switch, nudge buttons for the loop points and many new keyboard and
+  number pad shortcuts
+* Download the audio of YouTube videos with yt-dlp, drag and drop files
+* Export as WAV, MP3, Ogg Vorbis or FLAC, optionally only the loop section, with progress
+* Fixed looping at the end of a track, rewinding by seconds, the end position
+  after loading a file, and Save As restarting playback after a gap
+* Packages for Debian, Fedora, Flatpak, AppImage and Nix; install with make
+
 playitslowly 1.5.1
 ==================
 * Fix config loading (thanks michael!)

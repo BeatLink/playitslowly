@@ -48,6 +48,7 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 # always enable button images
 
 from playitslowly import myGtk
+from playitslowly import youtube
 myGtk.install()
 
 
@@ -66,6 +67,13 @@ else:
     CONFIG_PATH = os.path.join(XDG_CONFIG_HOME, "playitslowly.json")
 
 TIME_FORMAT = Gst.Format(Gst.Format.TIME)
+
+# Number pad keys that move the playback position, in seconds.
+KEYPAD_SKIP = {"KP_1": -5, "KP_4": -10, "KP_7": -15, "KP_3": 5, "KP_6": 10, "KP_9": 15, "Left": -5, "Right": 5}
+# The names the number pad sends with Num Lock off.
+KEYPAD_NAVIGATION = {"KP_Insert": "KP_0", "KP_End": "KP_1", "KP_Down": "KP_2", "KP_Next": "KP_3", "KP_Left": "KP_4",
+        "KP_Begin": "KP_5", "KP_Right": "KP_6", "KP_Home": "KP_7", "KP_Up": "KP_8", "KP_Prior": "KP_9",
+        "KP_Delete": "KP_Decimal"}
 
 def in_pathlist(filename, paths = os.environ.get("PATH").split(os.pathsep)):
     """check if an application is somewhere in $PATH"""
@@ -113,6 +121,8 @@ class MainWindow(Gtk.Window):
 
         self.pipeline = Pipeline(sink)
         self.pipeline.eos = self.on_eos
+        self.pipeline.tags = self.on_tags
+        self.export = None
 
         # --- Waveform Drawing Area ---
         self.waveform_area = Gtk.DrawingArea()
@@ -166,6 +176,10 @@ class MainWindow(Gtk.Window):
         self.recentbutton = Gtk.Button(label=_("Recent"))
         self.recentbutton.connect("clicked", self.show_recent)
         filechooserhbox.pack_end(self.recentbutton, False, False, 0)
+        self.youtubebutton = Gtk.Button(label=_("YouTube"))
+        self.youtubebutton.set_tooltip_text(_("Download the audio of a video and open it (Ctrl+Y)"))
+        self.youtubebutton.connect("clicked", self.show_youtube)
+        filechooserhbox.pack_end(self.youtubebutton, False, False, 0)
 
         self.speedchooser = myGtk.TextScaleReset(Gtk.Adjustment.new(1.00, 0.10, 4.0, 0.05, 0.05, 0))
         self.speedchooser.scale.connect("value-changed", self.speedchanged)
@@ -196,6 +210,8 @@ class MainWindow(Gtk.Window):
         self.endchooser.scale.connect("button-release-event", self.seeked)
         self.endchooser.add_accelerator("clicked", self.accel_group, ord(']'), Gdk.ModifierType.CONTROL_MASK, Gtk.AccelFlags.VISIBLE)
         self.endchooser.add_accelerator("clicked", self.accel_group, ord(']'), 0, Gtk.AccelFlags.VISIBLE)
+        for button in self.startchooser.nudge_buttons + self.endchooser.nudge_buttons:
+            button.connect("clicked", lambda sender: self.save_config())
         self.startchooser.scale.connect("value-changed", self.on_selection_changed)
         self.endchooser.scale.connect("value-changed", self.on_selection_changed)
 
@@ -286,6 +302,11 @@ class MainWindow(Gtk.Window):
 
         self.connect("key-release-event", self.key_release)
         self.connect("key-press-event", self.key_press)
+
+        # Audio files dropped from a file manager are opened.
+        self.drag_dest_set(Gtk.DestDefaults.ALL, [], Gdk.DragAction.COPY)
+        self.drag_dest_add_uri_targets()
+        self.connect("drag-data-received", self.on_drop)
 
         self.add(self.vbox)
         self.connect("destroy", Gtk.main_quit)
@@ -770,50 +791,132 @@ class MainWindow(Gtk.Window):
         self.back(self, val)
 
     def key_press(self, sender, event):
-        """single-key shortcuts, ignored while typing in a text field"""
-        if isinstance(self.get_focus(), Gtk.Entry):
-            return False
-        if event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK):
-            return False
+        """keyboard shortcuts; the single keys are ignored while typing in a text field"""
         key = Gdk.keyval_name(event.keyval) or ""
-        if key == "s":
+        if event.state & Gdk.ModifierType.CONTROL_MASK:
+            return self.control_shortcut(key.lower())
+        if event.state & Gdk.ModifierType.MOD1_MASK or isinstance(self.get_focus(), Gtk.Entry):
+            return False
+        # With Num Lock off the keypad sends its navigation names, so map those to the digits too.
+        key = KEYPAD_NAVIGATION.get(key, key)
+        if key in ("s", "a", "KP_Divide"):
             self.startchooser.update_to_current_position()
             self.save_config()
-        elif key == "e":
+        elif key in ("e", "b", "KP_Multiply"):
             self.endchooser.update_to_current_position()
             self.save_config()
         elif key == "l":
             self.loop_button.set_active(not self.loop_button.get_active())
-        elif key in ("0", "KP_0"):
+        elif key == "0":
             self.seek(self.startchooser.get_value())
-        elif key.replace("KP_", "") in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
-            self.back(None, int(key[-1]))
+        elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+            self.back(None, int(key))
+        elif key in KEYPAD_SKIP:
+            self.skip(KEYPAD_SKIP[key])
+        elif key in ("KP_2", "KP_8"):
+            self.speedchooser.set_value(self.speedchooser.get_value() + (0.05 if key == "KP_8" else -0.05))
+        elif key == "KP_5":
+            self.speedchooser.set_value(1.0)
+        elif key in ("KP_Add", "KP_Subtract"):
+            self.pitchchooser.set_value(self.pitchchooser.get_value() + (1 if key == "KP_Add" else -1))
+        elif key == "KP_0":
+            self.play_button.set_active(not self.play_button.get_active())
+        elif key == "KP_Decimal":
+            self.play_button.set_active(False)
+            self.rewind_to_start()
+        elif key == "Home":
+            self.rewind_to_start()
         else:
             return False
         return True
+
+    def control_shortcut(self, key):
+        if key == "o":
+            # The dialog's response handler opens the chosen file.
+            self.filedialog.run()
+            self.filedialog.hide()
+        elif key == "r":
+            self.show_recent()
+        elif key == "y":
+            self.show_youtube()
+        elif key == "q":
+            self.destroy()
+        elif key == "a":
+            self.startchooser.set_value(0.0)
+            self.save_config()
+        elif key == "b":
+            self.endchooser.set_value(self.endchooser.get_adjustment().get_upper())
+            self.save_config()
+        else:
+            return False
+        return True
+
+    def rewind_to_start(self):
+        """go to the loop start while looping, otherwise to the start of the song"""
+        self.seek(self.startchooser.get_value() if self.loop_button.get_active() else 0.0)
+
+    def skip(self, seconds):
+        """move the playback position by seconds, forward or back, staying inside the song"""
+        ok_position, position = self.pipeline.playbin.query_position(TIME_FORMAT)
+        ok_duration, duration = self.pipeline.playbin.query_duration(TIME_FORMAT)
+        if not (ok_position and ok_duration):
+            return
+        target = self.pipeline.song_time(position) + seconds
+        self.seek(max(0.0, min(target, self.pipeline.song_time(duration) - 0.1)))
+
+    def on_drop(self, widget, context, x, y, data, info, time):
+        uris = data.get_uris()
+        if uris:
+            self.set_uri(uris[0])
+
+    def show_youtube(self, sender=None):
+        youtube.YouTubeDialog(self, self.set_uri)
+
+    def on_tags(self, taglist):
+        """show the song's artist and title from its tags in the window title"""
+        ok_title, title = taglist.get_string("title")
+        if not ok_title:
+            return
+        ok_artist, artist = taglist.get_string("artist")
+        self.set_title("%s - %s" % ("%s - %s" % (artist, title) if ok_artist else title, NAME))
 
     def volumechanged(self, sender, foo):
         self.pipeline.set_volume(sender.get_value())
         self.save_config()
 
     def save(self, sender):
+        if self.export:
+            # While exporting, the button cancels the export instead.
+            self.export.cancel()
+            self.export_done(None, None)
+            return
         source = self.filedialog.get_uri()
         dialog = myGtk.FileChooserDialog(_("Save modified version as (.wav, .mp3, .ogg or .flac)"),
                 self, Gtk.FileChooserAction.SAVE)
         dialog.set_do_overwrite_confirmation(True)
         name = os.path.splitext(Gio.File.new_for_uri(source).get_basename() or "export")[0]
         dialog.set_current_name("%s-%gx.wav" % (name, self.speedchooser.get_value()))
+        section_check = Gtk.CheckButton(label=_("Only the section between the start and end positions"))
+        section_check.set_active(self.loop_button.get_active())
+        dialog.set_extra_widget(section_check)
         if dialog.run() == Gtk.ResponseType.OK:
             path = dialog.get_filename()
             if os.path.splitext(path)[1].lower() not in ENCODERS:
                 path += ".wav"
-            self.save_as_button.set_sensitive(False)
-            self.save_as_button.set_label(_("Saving..."))
-            self.pipeline.save_file(source, path, lambda error: self.export_done(path, error))
+            section = (self.startchooser.get_value(), self.endchooser.get_value()) if section_check.get_active() else None
+            self.export = self.pipeline.save_file(source, path, lambda error: self.export_done(path, error), section)
+            GLib.timeout_add(250, self.export_progress)
+            self.export_progress()
         dialog.destroy()
 
+    def export_progress(self):
+        if not self.export:
+            return False
+        self.save_as_button.set_label(_("Cancel saving (%d%%)") % round(self.export.progress() * 100))
+        return True
+
     def export_done(self, path, error):
-        self.save_as_button.set_sensitive(True)
+        self.export = None
         self.save_as_button.set_label(_("Save As"))
         if error:
             myGtk.show_error(_("Could not save %s: %s") % (path, error))
@@ -826,6 +929,7 @@ class MainWindow(Gtk.Window):
         self.back_button.set_sensitive(True)
         self.save_as_button.set_sensitive(True)
         self.play_button.set_active(False)
+        self.set_title(NAME)
 
         self.pipeline.reset()
         self.seek(0)

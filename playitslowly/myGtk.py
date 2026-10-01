@@ -354,6 +354,14 @@ class TextScaleWithCurPos(TextScale):
         self.reorder_child(self.now_button, 1)
         self.slider = slider
         self.add_accelerator = self.now_button.add_accelerator
+        # Nudge buttons move the value by 100 or 10 milliseconds, for setting loop points by ear.
+        self.nudge_buttons = []
+        for label, delta in (("\u00ab", -0.1), ("\u2039", -0.01), ("\u203a", 0.01), ("\u00bb", 0.1)):
+            button = Gtk.Button(label=label)
+            button.set_tooltip_text(_("Move by %+d ms") % round(delta * 1000))
+            button.connect("clicked", lambda sender, delta=delta: self.set_value(self.get_value() + delta))
+            self.pack_start(button, False, False, 0)
+            self.nudge_buttons.append(button)
     def update_to_current_position(self, sender=None):
         self.set_value(self.slider.get_value())
 

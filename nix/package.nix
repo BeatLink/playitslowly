@@ -7,6 +7,7 @@
   librsvg,
   gst_all_1,
   ffmpeg,
+  yt-dlp,
 }:
 
 python3Packages.buildPythonApplication {
@@ -29,6 +30,8 @@ python3Packages.buildPythonApplication {
     gst_all_1.gst-plugins-good
     # Provides the soundtouch "pitch" element the app cannot run without.
     gst_all_1.gst-plugins-bad
+    # Decodes AAC and other formats the plugin sets above leave out, such as most .m4a files.
+    gst_all_1.gst-libav
   ];
 
   dependencies = with python3Packages; [
@@ -55,10 +58,10 @@ python3Packages.buildPythonApplication {
 
   # Wrap once, with both the GApps and the Python environment.
   dontWrapGApps = true;
-  # pydub decodes the waveform by running ffmpeg.
+  # pydub decodes the waveform by running ffmpeg, and the YouTube dialog runs yt-dlp.
   # Desktops such as Cinnamon export a PYTHONPATH whose pygobject clashes with ours and breaks the window.
   preFixup = ''
-    makeWrapperArgs+=("''${gappsWrapperArgs[@]}" --unset PYTHONPATH --prefix PATH : ${lib.makeBinPath [ ffmpeg ]})
+    makeWrapperArgs+=("''${gappsWrapperArgs[@]}" --unset PYTHONPATH --prefix PATH : ${lib.makeBinPath [ ffmpeg yt-dlp ]})
   '';
 
   meta = {

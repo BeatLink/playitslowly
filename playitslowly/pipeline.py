@@ -47,7 +47,7 @@ BALANCE_MODES = [
 # Export formats picked by the file extension; each is a GStreamer encoder description.
 ENCODERS = {
     ".wav": "wavenc",
-    ".mp3": "lamemp3enc target=bitrate bitrate=192 cbr=true",
+    ".mp3": "lamemp3enc target=bitrate bitrate=192 cbr=true ! id3v2mux",
     ".ogg": "vorbisenc quality=0.6 ! oggmux",
     ".flac": "flacenc",
 }
@@ -147,12 +147,15 @@ class Pipeline(Gst.Pipeline):
         bus.connect("message", self.on_message)
 
         self.eos = lambda: None
+        self.tags = lambda taglist: None
         self.error_shown = False
         self.exports = []
     def on_message(self, bus, message):
         t = message.type
         if t == Gst.MessageType.EOS:
             self.eos()
+        elif t == Gst.MessageType.TAG:
+            self.tags(message.parse_tag())
         elif t == Gst.MessageType.ERROR:
             # One broken file posts several errors, so show only the first.
             if not self.error_shown:
@@ -185,8 +188,11 @@ class Pipeline(Gst.Pipeline):
     def set_limiter(self, enabled):
         self.effects.set_limiter(enabled)
 
-    def save_file(self, source_uri, path, done):
-        """render source_uri with the current settings into path, encoded by its extension, then call done(error)"""
+    def save_file(self, source_uri, path, done, section=None):
+        """render source_uri with the current settings into path, encoded by its extension
+
+        section is an optional (start, end) in song seconds; done(error) is called when it finishes.
+        """
         encoder = ENCODERS.get(os.path.splitext(path)[1].lower(), ENCODERS[".wav"])
         pipeline = Gst.Pipeline()
         playbin = Gst.ElementFactory.make("playbin")
@@ -206,21 +212,11 @@ class Pipeline(Gst.Pipeline):
         effects.last.link(encode)
         encode.link(filesink)
         playbin.set_property("audio-sink", bin)
-
-        def on_message(bus, message):
-            if message.type in (Gst.MessageType.EOS, Gst.MessageType.ERROR):
-                error = message.parse_error()[0].message if message.type == Gst.MessageType.ERROR else None
-                bus.remove_signal_watch()
-                pipeline.set_state(Gst.State.NULL)
-                self.exports.remove(pipeline)
-                done(error)
-
-        bus = pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message", on_message)
-        # Keep a reference until it finishes, or the export is garbage collected mid-way.
-        self.exports.append(pipeline)
-        pipeline.set_state(Gst.State.PLAYING)
+        export = Export(self, pipeline, path, done, section, self.get_speed())
+        self.exports.append(export)
+        # A section needs a seek once the file is open, so it starts paused.
+        pipeline.set_state(Gst.State.PAUSED if section else Gst.State.PLAYING)
+        return export
 
     def set_file(self, uri):
         self.error_shown = False
@@ -236,3 +232,57 @@ class Pipeline(Gst.Pipeline):
         self.set_state(Gst.State.READY)
 
 
+
+
+class Export:
+    """one running export: progress() goes from 0 to 1, cancel() stops it and deletes the partial file"""
+    def __init__(self, owner, pipeline, path, done, section, speed):
+        self.owner = owner
+        self.pipeline = pipeline
+        self.path = path
+        self.done = done
+        self.speed = speed
+        # Seek positions are in output time, which runs faster or slower than the song by the speed.
+        self.section = tuple(int(t / speed * Gst.SECOND) for t in section) if section else None
+        self.seeked = False
+        bus = pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message", self.on_message)
+
+    def on_message(self, bus, message):
+        if message.type == Gst.MessageType.ASYNC_DONE and self.section and not self.seeked:
+            self.seeked = True
+            start, end = self.section
+            self.pipeline.seek(1.0, Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE,
+                    Gst.SeekType.SET, start, Gst.SeekType.SET, end)
+            self.pipeline.set_state(Gst.State.PLAYING)
+        elif message.type in (Gst.MessageType.EOS, Gst.MessageType.ERROR):
+            error = message.parse_error()[0].message if message.type == Gst.MessageType.ERROR else None
+            self.stop()
+            self.done(error)
+
+    def progress(self):
+        ok_position, position = self.pipeline.query_position(Gst.Format.TIME)
+        if not ok_position:
+            return 0.0
+        if self.section:
+            start, end = self.section
+        else:
+            ok_duration, end = self.pipeline.query_duration(Gst.Format.TIME)
+            start = 0
+            if not ok_duration:
+                return 0.0
+        return max(0.0, min(1.0, (position - start) / max(1, end - start)))
+
+    def stop(self):
+        self.pipeline.get_bus().remove_signal_watch()
+        self.pipeline.set_state(Gst.State.NULL)
+        if self in self.owner.exports:
+            self.owner.exports.remove(self)
+
+    def cancel(self):
+        self.stop()
+        try:
+            os.remove(self.path)
+        except OSError:
+            pass

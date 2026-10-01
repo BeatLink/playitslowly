@@ -16,7 +16,8 @@ AppDir:
     icon: ch.x29a.playitslowly
     version: !ENV ${APP_VERSION}
     exec: usr/bin/python3
-    exec_args: "-m playitslowly.app $@"
+    # -P keeps a playitslowly folder in the current directory from shadowing the bundled one.
+    exec_args: "-P -m playitslowly.app $@"
 
   apt:
     arch: amd64

@@ -15,7 +15,8 @@ export HOME="$dir"
 # CI runners set their own config folder, so point it into the test home; SMOKE_CONFIG_REL overrides where to look inside it.
 export XDG_CONFIG_HOME="$dir/.config"
 config="$dir/${SMOKE_CONFIG_REL:-.config/playitslowly.json}"
-timeout 20 xvfb-run -a "$@" --sink=fakesink "$dir/tone.wav" > "$dir/log" 2>&1
+# SMOKE_TIMEOUT gives slow first starts, like an AppImage scanning its plugins, more time.
+timeout "${SMOKE_TIMEOUT:-20}" xvfb-run -a "$@" --sink=fakesink "$dir/tone.wav" > "$dir/log" 2>&1
 status=$?
 cat "$dir/log"
 # timeout's 124 means the app was still running, which is what a healthy start looks like.

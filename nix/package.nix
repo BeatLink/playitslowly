@@ -6,6 +6,7 @@
   gtk3,
   librsvg,
   gst_all_1,
+  ffmpeg,
 }:
 
 python3Packages.buildPythonApplication {
@@ -30,7 +31,11 @@ python3Packages.buildPythonApplication {
     gst_all_1.gst-plugins-bad
   ];
 
-  dependencies = [ python3Packages.pygobject3 ];
+  dependencies = with python3Packages; [
+    pygobject3
+    numpy
+    pydub
+  ];
 
   # setup.py needs distutils, which current Python no longer ships, so install the files directly.
   installPhase = ''
@@ -50,9 +55,10 @@ python3Packages.buildPythonApplication {
 
   # Wrap once, with both the GApps and the Python environment.
   dontWrapGApps = true;
+  # pydub decodes the waveform by running ffmpeg.
   # Desktops such as Cinnamon export a PYTHONPATH whose pygobject clashes with ours and breaks the window.
   preFixup = ''
-    makeWrapperArgs+=("''${gappsWrapperArgs[@]}" --unset PYTHONPATH)
+    makeWrapperArgs+=("''${gappsWrapperArgs[@]}" --unset PYTHONPATH --prefix PATH : ${lib.makeBinPath [ ffmpeg ]})
   '';
 
   meta = {

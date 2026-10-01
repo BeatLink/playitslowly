@@ -1,5 +1,3 @@
-import gi
-gi.require_version('Gtk','3.0')
 #!/usr/bin/env python3
 # vim: set fileencoding=utf-8 :
 """
@@ -26,6 +24,7 @@ import getopt
 import mimetypes
 import os
 import sys
+import threading
 
 try:
     import json
@@ -120,6 +119,7 @@ class MainWindow(Gtk.Window):
         self.waveform_area.set_size_request(600, 100)
         self.waveform_area.connect("draw", self.on_waveform_draw)
         self.waveform_samples = None
+        self.waveform_uri = None
         self.waveform_loaded = False
         self.waveform_view_start = 0.0   # fraction of total waveform (0.0–1.0)
         self.waveform_view_end = 1.0     # fraction of total waveform (0.0–1.0)
@@ -250,20 +250,13 @@ class MainWindow(Gtk.Window):
         self.config_saving = False
         self.load_config()
 
-        # --- Periodic waveform refresh (for moving playback line) ---
-        from gi.repository import GLib
+        GLib.timeout_add(50, self.refresh_waveform)
 
-        def refresh_waveform():
-            # Always repaint if window is visible
-            try:
-                if self.waveform_loaded and self.waveform_area.get_mapped():
-                    self.waveform_area.queue_draw()
-            except Exception as e:
-                logging.debug(f"refresh_waveform error: {e}")
-            return True
-
-        # Start after GTK mainloop is fully running (50ms delay)
-        GLib.timeout_add(50, lambda: GLib.timeout_add(16, refresh_waveform))
+    def refresh_waveform(self):
+        """repaint the waveform while the playback line is moving"""
+        if self.waveform_loaded and self.play_button.get_active() and self.waveform_area.get_mapped():
+            self.waveform_area.queue_draw()
+        return True
 
     # ------------------------------------------------------------
     # Waveform mouse interaction
@@ -542,24 +535,36 @@ class MainWindow(Gtk.Window):
             print(f"[ERROR] on_selection_changed: {e}")
 
 
-    def load_waveform(self, filename):
+    def load_waveform(self, uri):
+        """decode the waveform in a background thread so the window stays responsive"""
+        self.waveform_uri = uri
+        self.waveform_samples = None
+        self.waveform_loaded = False
+        self.waveform_view_start = 0.0
+        self.waveform_view_end = 1.0
+        self.waveform_area.queue_draw()
+        path = Gio.File.new_for_uri(uri).get_path() if uri else None
+        if not path:
+            # Remote files still play, they just have no waveform.
+            return
+        threading.Thread(target=self.extract_waveform, args=(uri, path), daemon=True).start()
+
+    def extract_waveform(self, uri, path):
         try:
             from playitslowly.waveform import WaveformExtractor
-        except Exception as e:
-            logging.error(f"Could not import WaveformExtractor: {e}")
-            self.waveform_loaded = False
-            return
-
-        try:
-            extractor = WaveformExtractor(filename)
-            self.waveform_samples = extractor.get_samples(50000)
-            self.waveform_loaded = True
+            samples = WaveformExtractor(path).get_samples(50000)
         except Exception as e:
             logging.error(f"Waveform load error: {e}")
-            self.waveform_samples = None
-            self.waveform_loaded = False
+            return
+        GLib.idle_add(self.waveform_ready, uri, samples)
 
-        self.waveform_area.queue_draw()
+    def waveform_ready(self, uri, samples):
+        # Ignore a result that arrives after the user has opened another file.
+        if uri == self.waveform_uri:
+            self.waveform_samples = samples
+            self.waveform_loaded = True
+            self.waveform_area.queue_draw()
+        return False
 
     def speedpress(self, *args):
         self.speedchangeing = True
@@ -641,6 +646,7 @@ class MainWindow(Gtk.Window):
     def load_file_settings(self, filename):
         logging.debug(f"Loading file settings for: {filename}")
         self.add_recent(filename)
+        self.load_waveform(filename)
         if not self.config or not filename in self.config["files"]:
             self.reset_settings()
             self.pipeline.set_file(filename)
@@ -703,37 +709,8 @@ class MainWindow(Gtk.Window):
         dialog.destroy()
 
     def filechanged(self, sender=None, response_id=Gtk.ResponseType.OK, uri=None):
-        filename = None
-        try:
-            filename = self.filedialog.get_filename()
-        except Exception as e:
-            print(f"[ERROR] filedialog.get_filename() failed: {e}")
-
-        # If not found, try the URI conversion
-        if not filename and uri:
-            try:
-                from gi.repository import Gio
-                gfile = Gio.File.new_for_uri(uri)
-                filename = gfile.get_path()
-            except Exception as e:
-                print(f"[ERROR] Failed to resolve URI to path: {e}")
-
-        # Final fallback: if sender is FileChooserButton
-        if not filename and hasattr(sender, "get_filename"):
-            try:
-                filename = sender.get_filename()
-            except Exception as e:
-                print(f"[ERROR] sender.get_filename() failed: {e}")
-
-        if not filename:
-            print("[ERROR] Could not resolve any valid filename, skipping waveform load")
+        if response_id != Gtk.ResponseType.OK:
             return
-
-        # --- Load waveform ---
-        try:
-            self.load_waveform(filename)
-        except Exception as e:
-            logging.error(f"Waveform load failed: {e}")
 
         self.play_button.set_sensitive(True)
         self.back_button.set_sensitive(True)
@@ -767,6 +744,7 @@ class MainWindow(Gtk.Window):
             self.positionchooser.set_value(pos)
         pos = self.pipeline.pipe_time(pos)
         self.pipeline.playbin.seek_simple(TIME_FORMAT, Gst.SeekFlags.FLUSH, pos or 0)
+        self.waveform_area.queue_draw()
 
     def speedchanged(self, *args):
         if self.speedchangeing:

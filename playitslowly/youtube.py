@@ -9,9 +9,11 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
+import importlib.util
 import os
 import re
 import shutil
+import sys
 
 from gi.repository import Gio, GLib, Gtk
 
@@ -19,6 +21,19 @@ _ = lambda s: s
 
 YTDLP = "yt-dlp"
 PROGRESS = re.compile(r"^\[download\]\s+([0-9.]+)%")
+
+
+def ytdlp_command():
+    """how to run yt-dlp, or None when it is missing
+
+    The bundled module runs with this Python, which also works inside an AppImage where
+    starting a second program from the bundle is unreliable.
+    """
+    if importlib.util.find_spec("yt_dlp"):
+        return [sys.executable, "-m", "yt_dlp"]
+    if shutil.which(YTDLP):
+        return [YTDLP]
+    return None
 
 
 def download_dir():
@@ -37,7 +52,7 @@ class Download:
         self.cancelled = False
         os.makedirs(download_dir(), exist_ok=True)
         # Opus needs no re-encoding and GStreamer plays it in any container.
-        argv = [YTDLP, "--newline", "--progress", "--no-playlist", "-f", "bestaudio[acodec=opus]/bestaudio",
+        argv = ytdlp_command() + ["--newline", "--progress", "--no-playlist", "-f", "bestaudio[acodec=opus]/bestaudio",
                 "-o", os.path.join(download_dir(), "%(title)s [%(id)s].%(ext)s"),
                 "--print", "after_move:filepath"]
         # With ffmpeg, yt-dlp drops the video container and writes the title and artist tags.
@@ -112,7 +127,7 @@ class YouTubeDialog(Gtk.Dialog):
             url = self.entry.get_text().strip()
             if not url or self.download:
                 return
-            if not shutil.which(YTDLP):
+            if not ytdlp_command():
                 self.fail(_("yt-dlp is not installed. Install it to download audio from YouTube."))
                 return
             self.download_button.set_sensitive(False)

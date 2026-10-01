@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from gi.repository import Gtk, GObject
 import math
 import sys
+import traceback
 from datetime import timedelta
 import collections
 
@@ -397,8 +398,7 @@ class ExceptionDialog(Gtk.MessageDialog):
         Gtk.MessageDialog.__init__(self, buttons=Gtk.ButtonsType.CLOSE, type=Gtk.MessageType.ERROR)
         self.set_resizable(True)
         self.set_markup(_("An error has occured:\n%r\nYou should save your work and restart the application. If the error occurs again please report it to the developer." % evalue))
-        import cgitb
-        text = cgitb.text((etype, evalue, etb), 5)
+        text = "".join(traceback.format_exception(etype, evalue, etb))
         expander = Gtk.Expander()
         #_("Exception Details"))
         self.vbox.pack_start(expander, True, True, 0)

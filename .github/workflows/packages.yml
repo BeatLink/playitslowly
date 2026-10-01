@@ -71,6 +71,8 @@ jobs:
           flatpak install --user -y --noninteractive --bundle playitslowly.flatpak
           flatpak run --command=sh ch.x29a.playitslowly -c 'gst-inspect-1.0 pitch > /dev/null && gst-inspect-1.0 audiomixmatrix > /dev/null && python3 -c "import numpy, yt_dlp"' || echo "gst-inspect is not in the runtime; the smoke test below still checks playback"
           export TMPDIR="$GITHUB_WORKSPACE"
+          # The smoke test moves HOME, so keep pointing flatpak at this user's installation.
+          export FLATPAK_USER_DIR="$HOME/.local/share/flatpak"
           SMOKE_CONFIG_REL=.var/app/ch.x29a.playitslowly/config/playitslowly.json packaging/smoke-test.sh flatpak run ch.x29a.playitslowly
 
   appimage:
@@ -90,12 +92,12 @@ jobs:
           export APP_VERSION=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' playitslowly/app.py)
           appimage-builder --recipe packaging/appimage/AppImageBuilder.yml --skip-test
           mkdir -p dist && mv ./*.AppImage dist/
-      - name: Start
-        run: packaging/smoke-test.sh dist/*.AppImage --appimage-extract-and-run
       - uses: actions/upload-artifact@v4
         with:
           name: appimage
           path: dist/*.AppImage
+      - name: Start
+        run: packaging/smoke-test.sh dist/*.AppImage --appimage-extract-and-run
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

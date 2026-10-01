@@ -66,13 +66,17 @@ class Pipeline(Gst.Pipeline):
         bus.connect("message", self.on_message)
 
         self.eos = lambda: None
+        self.error_shown = False
 
     def on_message(self, bus, message):
         t = message.type
         if t == Gst.MessageType.EOS:
             self.eos()
         elif t == Gst.MessageType.ERROR:
-            myGtk.show_error("Gstreamer error: %s - %s" % message.parse_error())
+            # One broken file posts several errors, so show only the first.
+            if not self.error_shown:
+                self.error_shown = True
+                myGtk.show_error("Gstreamer error: %s - %s" % message.parse_error())
 
     def set_volume(self, volume):
         self.playbin.set_property("volume", volume)
@@ -131,6 +135,7 @@ class Pipeline(Gst.Pipeline):
         return (pipeline, playbin)
 
     def set_file(self, uri):
+        self.error_shown = False
         self.playbin.set_property("uri", uri)
 
     def play(self):

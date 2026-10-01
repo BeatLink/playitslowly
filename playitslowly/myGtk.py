@@ -165,6 +165,7 @@ def show_error(msg):
     dialog = Gtk.MessageDialog(type=Gtk.MessageType.ERROR, message_format=str(msg),
             buttons=Gtk.ButtonsType.OK)
     dialog.set_title(_("Error"))
+    dialog.connect("response", lambda d, response: d.destroy())
     # dialog.run() - this breaks when called from GObject.idle_add
     # dialog.hide()
     # dialog.destroy

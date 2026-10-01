@@ -40,7 +40,7 @@ from gi.repository import Gtk, GObject, Gst, Gio, Gdk, GLib
 Gst.init(None)
 GLib.set_prgname("ch.x29a.playitslowly")
 
-from playitslowly.pipeline import Pipeline
+from playitslowly.pipeline import Pipeline, BALANCE_MODES, ENCODERS
 
 import logging
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -209,6 +209,44 @@ class MainWindow(Gtk.Window):
             ("End Position (seconds)", self.endchooser)
         ]), False, False, 0)
 
+        # --- Options: balance, count-in, limiter, per-file memory ---
+        self.balance_mode = Gtk.ComboBoxText()
+        for key, label in BALANCE_MODES:
+            self.balance_mode.append(key, label)
+        self.balance_mode.set_active_id("stereo")
+        self.balance_mode.connect("changed", self.balancechanged)
+        self.balancechooser = myGtk.TextScaleReset(Gtk.Adjustment.new(0.0, -1.0, 1.0, 0.05, 0.05, 0))
+        self.balancechooser.scale.connect("value-changed", self.balancechanged)
+        self.balancechooser.set_sensitive(False)
+        balancebox = Gtk.HBox()
+        balancebox.pack_start(self.balance_mode, False, False, 4)
+        balancebox.pack_start(self.balancechooser, True, True, 0)
+
+        self.countin_id = None
+        self.countinchooser = myGtk.TextScaleReset(Gtk.Adjustment.new(0.0, 0.0, 10.0, 1.0, 1.0, 0))
+        self.countinchooser.scale.connect("value-changed", self.optionschanged)
+        self.countin_every_loop = Gtk.CheckButton(label=_("Before every loop"))
+        self.countin_every_loop.connect("toggled", self.optionschanged)
+        countinbox = Gtk.HBox()
+        countinbox.pack_start(self.countinchooser, True, True, 0)
+        countinbox.pack_start(self.countin_every_loop, False, False, 4)
+
+        self.limiter_check = Gtk.CheckButton(label=_("Limiter (prevents clipping)"))
+        self.limiter_check.connect("toggled", self.optionschanged)
+        self.remember_check = Gtk.CheckButton(label=_("Remember settings for each file"))
+        self.remember_check.connect("toggled", self.optionschanged)
+        checkbox = Gtk.HBox()
+        checkbox.pack_start(self.limiter_check, False, False, 4)
+        checkbox.pack_start(self.remember_check, False, False, 4)
+
+        options = Gtk.Expander(label=_("Options"))
+        options.add(myGtk.form([
+            (_("Balance"), balancebox),
+            (_("Count-in (seconds)"), countinbox),
+            ("", checkbox),
+        ]))
+        self.vbox.pack_start(options, False, False, 0)
+
         buttonbox = Gtk.HButtonBox()
         myGtk.add_style_class(buttonbox, 'buttonBox')
         self.vbox.pack_end(buttonbox, False, False, 0)
@@ -226,6 +264,11 @@ class MainWindow(Gtk.Window):
         self.back_button.set_sensitive(False)
         buttonbox.pack_start(self.back_button, True, True, 0)
 
+        self.loop_button = Gtk.ToggleButton(label=_("Loop"))
+        self.loop_button.set_tooltip_text(_("Repeat between the start and end positions (L)"))
+        self.loop_button.connect("toggled", self.optionschanged)
+        buttonbox.pack_start(self.loop_button, True, True, 0)
+
         self.volume_button = Gtk.VolumeButton()
         self.volume_button.set_value(1.0)
         self.volume_button.set_relief(Gtk.ReliefStyle.NORMAL)
@@ -242,6 +285,7 @@ class MainWindow(Gtk.Window):
         buttonbox.pack_end(button_about, True, True, 0)
 
         self.connect("key-release-event", self.key_release)
+        self.connect("key-press-event", self.key_press)
 
         self.add(self.vbox)
         self.connect("destroy", Gtk.main_quit)
@@ -629,6 +673,12 @@ class MainWindow(Gtk.Window):
 
     def load_config(self):
         self.config_saving = True # do not save while loading
+        self.loop_button.set_active(self.config.get("loop", True))
+        self.countinchooser.set_value(self.config.get("countin", 0))
+        self.countin_every_loop.set_active(self.config.get("countin_every_loop", False))
+        self.limiter_check.set_active(self.config.get("limiter", True))
+        self.remember_check.set_active(self.config.get("remember", True))
+        self.pipeline.set_limiter(self.limiter_check.get_active())
         lastfile = self.config.get("lastfile")
         if lastfile:
             self.set_uri(lastfile)
@@ -642,12 +692,24 @@ class MainWindow(Gtk.Window):
         self.startchooser.set_value(0.0)
         self.endchooser.get_adjustment().set_property("upper", 1.0)
         self.endchooser.set_value(1.0)
+        self.balance_mode.set_active_id("stereo")
+        self.balancechooser.set_value(0.0)
+
+    def optionschanged(self, sender=None):
+        self.pipeline.set_limiter(self.limiter_check.get_active())
+        self.save_config()
+
+    def balancechanged(self, sender=None):
+        mode = self.balance_mode.get_active_id() or "stereo"
+        self.balancechooser.set_sensitive(mode != "stereo")
+        self.pipeline.set_balance(mode, self.balancechooser.get_value())
+        self.save_config()
 
     def load_file_settings(self, filename):
         logging.debug(f"Loading file settings for: {filename}")
         self.add_recent(filename)
         self.load_waveform(filename)
-        if not self.config or not filename in self.config["files"]:
+        if not self.remember_check.get_active() or filename not in self.config.get("files", {}):
             self.reset_settings()
             self.pipeline.set_file(filename)
             self.pipeline.pause()
@@ -662,6 +724,8 @@ class MainWindow(Gtk.Window):
         self.endchooser.get_adjustment().set_property("upper", settings["duration"] or 1.0)
         self.endchooser.set_value(settings["end"])
         self.volume_button.set_value(settings["volume"])
+        self.balance_mode.set_active_id(settings.get("balance_mode", "stereo"))
+        self.balancechooser.set_value(settings.get("balance", 0.0))
 
     def save_config(self):
         """saves the config file with a delay"""
@@ -675,6 +739,14 @@ class MainWindow(Gtk.Window):
         self.config_saving = False
         lastfile = self.filedialog.get_uri()
         self.config["lastfile"] = lastfile
+        self.config["loop"] = self.loop_button.get_active()
+        self.config["countin"] = self.countinchooser.get_value()
+        self.config["countin_every_loop"] = self.countin_every_loop.get_active()
+        self.config["limiter"] = self.limiter_check.get_active()
+        self.config["remember"] = self.remember_check.get_active()
+        if not lastfile or not self.remember_check.get_active():
+            self.config.save()
+            return False
         settings = {}
         settings["speed"] = self.speedchooser.get_value()
         settings["pitch"] = self.get_pitch()
@@ -682,12 +754,14 @@ class MainWindow(Gtk.Window):
         settings["start"] = self.startchooser.get_value()
         settings["end"] = self.endchooser.get_value()
         settings["volume"] = self.volume_button.get_value()
+        settings["balance_mode"] = self.balance_mode.get_active_id()
+        settings["balance"] = self.balancechooser.get_value()
         self.config.setdefault("files", {})[lastfile] = settings
 
         self.config.save()
 
     def key_release(self, sender, event):
-        if not event.get_state() & Gdk.ModifierType.CONTROL_MASK:
+        if not event.state & Gdk.ModifierType.CONTROL_MASK:
             return
         try:
             val = int(chr(event.keyval))
@@ -695,18 +769,54 @@ class MainWindow(Gtk.Window):
             return
         self.back(self, val)
 
+    def key_press(self, sender, event):
+        """single-key shortcuts, ignored while typing in a text field"""
+        if isinstance(self.get_focus(), Gtk.Entry):
+            return False
+        if event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK):
+            return False
+        key = Gdk.keyval_name(event.keyval) or ""
+        if key == "s":
+            self.startchooser.update_to_current_position()
+            self.save_config()
+        elif key == "e":
+            self.endchooser.update_to_current_position()
+            self.save_config()
+        elif key == "l":
+            self.loop_button.set_active(not self.loop_button.get_active())
+        elif key in ("0", "KP_0"):
+            self.seek(self.startchooser.get_value())
+        elif key.replace("KP_", "") in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+            self.back(None, int(key[-1]))
+        else:
+            return False
+        return True
+
     def volumechanged(self, sender, foo):
         self.pipeline.set_volume(sender.get_value())
         self.save_config()
 
     def save(self, sender):
-        dialog = myGtk.FileChooserDialog(_("Save modified version as"),
+        source = self.filedialog.get_uri()
+        dialog = myGtk.FileChooserDialog(_("Save modified version as (.wav, .mp3, .ogg or .flac)"),
                 self, Gtk.FileChooserAction.SAVE)
-        dialog.set_current_name("export.wav")
+        dialog.set_do_overwrite_confirmation(True)
+        name = os.path.splitext(Gio.File.new_for_uri(source).get_basename() or "export")[0]
+        dialog.set_current_name("%s-%gx.wav" % (name, self.speedchooser.get_value()))
         if dialog.run() == Gtk.ResponseType.OK:
-            self.pipeline.set_file(self.filedialog.get_uri())
-            self.foo = self.pipeline.save_file(dialog.get_filename())
+            path = dialog.get_filename()
+            if os.path.splitext(path)[1].lower() not in ENCODERS:
+                path += ".wav"
+            self.save_as_button.set_sensitive(False)
+            self.save_as_button.set_label(_("Saving..."))
+            self.pipeline.save_file(source, path, lambda error: self.export_done(path, error))
         dialog.destroy()
+
+    def export_done(self, path, error):
+        self.save_as_button.set_sensitive(True)
+        self.save_as_button.set_label(_("Save As"))
+        if error:
+            myGtk.show_error(_("Could not save %s: %s") % (path, error))
 
     def filechanged(self, sender=None, response_id=Gtk.ResponseType.OK, uri=None):
         if response_id != Gtk.ResponseType.OK:
@@ -772,9 +882,46 @@ class MainWindow(Gtk.Window):
         self.seek(t)
 
     def on_eos(self):
-        """loop back to the start position when playback reaches the end of the track"""
-        if self.play_button.get_active():
+        """loop back to the start position, or stop there when looping is off"""
+        if not self.play_button.get_active():
+            return
+        if self.loop_button.get_active():
+            self.restart_loop()
+        else:
+            self.play_button.set_active(False)
             self.seek(self.startchooser.get_value())
+
+    def restart_loop(self):
+        """jump back to the start position, waiting for the count-in first when it is set for every loop"""
+        countin = self.countin_every_loop.get_active() and self.countinchooser.get_value() > 0
+        if countin:
+            self.pipeline.pause()
+        self.seek(self.startchooser.get_value() + 0.01)
+        if countin:
+            self.start_countin()
+
+    def start_countin(self):
+        """wait the count-in time before playing, showing the seconds left on the play button"""
+        self.cancel_countin()
+        self.countin_left = int(self.countinchooser.get_value())
+        self.play_button.set_label(_("Starting in %d") % self.countin_left)
+        self.countin_id = GLib.timeout_add(1000, self.countin_tick)
+
+    def countin_tick(self):
+        self.countin_left -= 1
+        if self.countin_left > 0:
+            self.play_button.set_label(_("Starting in %d") % self.countin_left)
+            return True
+        self.countin_id = None
+        self.play_button.set_label(_("Play"))
+        self.pipeline.play()
+        return False
+
+    def cancel_countin(self):
+        if self.countin_id:
+            GLib.source_remove(self.countin_id)
+            self.countin_id = None
+            self.play_button.set_label(_("Play"))
 
     def play(self, sender):
         if sender.get_active():
@@ -782,9 +929,14 @@ class MainWindow(Gtk.Window):
             # Re-setting the same uri queues it as the next gapless track, which hides the end of the stream.
             if self.pipeline.playbin.get_property("current-uri") != uri:
                 self.pipeline.set_file(uri)
-            self.pipeline.play()
+            if self.countinchooser.get_value() > 0:
+                self.pipeline.pause()
+                self.start_countin()
+            else:
+                self.pipeline.play()
             GObject.timeout_add(100, self.update_position)
         else:
+            self.cancel_countin()
             self.pipeline.pause()
 
     def update_position(self):
@@ -823,12 +975,16 @@ class MainWindow(Gtk.Window):
         start = self.startchooser.get_value()
         end = self.endchooser.get_value()
 
+        # The start and end positions only bound playback while looping, and not during a count-in.
+        if not self.loop_button.get_active() or self.countin_id:
+            return self.play_button.get_active()
+
         if end <= start:
             self.play_button.set_active(False)
             return False
 
         if position >= end or position < start:
-            self.seek(start+0.01)
+            self.restart_loop()
             return True
 
         return self.play_button.get_active()

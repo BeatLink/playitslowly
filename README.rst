@@ -36,9 +36,27 @@ Dependencies
 Shortcuts
 =========
 The following keyboard shortcuts exist:
- * Alt + P or SPACE: Play/Pause
- * Alt + e: Rewind
- * CTRL + 1-9: Rewind (x seconds)
+ * SPACE: Play/Pause
+ * s or [: Set the start position to the current position
+ * e or ]: Set the end position to the current position
+ * l: Turn looping between the start and end positions on or off
+ * 0: Jump to the start position
+ * 1-9 or CTRL + 1-9: Rewind (x seconds)
+
+The single-key shortcuts are ignored while typing in a text field.
+
+Options
+=======
+The Options section holds:
+ * Balance: Left / Right fades one side, Balance plays one channel in mono
+   on both speakers at the ends, and Mid / Side keeps only the middle
+   (usually the vocals) or only the sides.
+ * Count-in: seconds to wait after pressing play, optionally before every loop.
+ * Limiter: keeps loud passages from clipping.
+ * Remember settings for each file: turn off to start every file fresh.
+
+Save As exports the whole track with the current settings. The file
+extension picks the format: .wav, .mp3, .ogg or .flac.
 
 
 Selecting the audio output device

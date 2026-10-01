@@ -34,6 +34,100 @@ from playitslowly import myGtk
 
 _ = lambda x: x
 
+import os
+
+# Each balance mode maps a value from -1 to 1 onto a 2x2 matrix: rows are the left and right outputs, columns the left and right inputs.
+BALANCE_MODES = [
+    ("stereo", _("Stereo")),
+    ("leftright", _("Left / Right")),
+    ("balance", _("Balance (mono at the ends)")),
+    ("midside", _("Mid / Side")),
+]
+
+# Export formats picked by the file extension; each is a GStreamer encoder description.
+ENCODERS = {
+    ".wav": "wavenc",
+    ".mp3": "lamemp3enc target=bitrate bitrate=192 cbr=true",
+    ".ogg": "vorbisenc quality=0.6 ! oggmux",
+    ".flac": "flacenc",
+}
+
+LIMITER_THRESHOLD = 0.89 # about -1 dBFS
+LIMITER_RATIO = 0.1
+
+
+def balance_matrix(mode, value):
+    """return the 2x2 channel matrix for a balance mode and a value from -1 to 1"""
+    v = max(-1.0, min(1.0, value))
+    if mode == "leftright":
+        # Fade one side out while the other stays at full level.
+        return [[min(1.0, 1.0 - v), 0.0], [0.0, min(1.0, 1.0 + v)]]
+    if mode == "balance":
+        # At the ends both speakers play the one channel in mono.
+        if v <= 0:
+            return [[1.0, 0.0], [-v, 1.0 + v]]
+        return [[1.0 - v, v], [0.0, 1.0]]
+    if mode == "midside":
+        # -1 keeps only the middle (usually vocals), 1 keeps only what differs between the sides.
+        mid = 1.0 - max(v, 0.0)
+        side = 1.0 + min(v, 0.0)
+        a, b = (mid + side) / 2, (mid - side) / 2
+        return [[a, b], [b, a]]
+    return [[1.0, 0.0], [0.0, 1.0]]
+
+
+def matrix_string(matrix):
+    return "<" + ",".join("<" + ",".join("(double)%r" % float(x) for x in row) + ">" for row in matrix) + ">"
+
+
+class Effects:
+    """pitch and tempo, then balance and limiter, as a chain of elements inside a bin"""
+    def __init__(self, bin):
+        self.speedchanger = Gst.ElementFactory.make("pitch")
+        if self.speedchanger is None:
+            myGtk.show_error(_("You need to install the Gstreamer soundtouch elements for "
+                    "play it slowly too. They are part of Gstreamer-plugins-bad. Consult the "
+                    "README if you need more information.")).run()
+            raise SystemExit()
+        convert = Gst.ElementFactory.make("audioconvert")
+        # The balance matrix needs exactly two channels, so mono and surround files are converted first.
+        caps = Gst.ElementFactory.make("capsfilter")
+        caps.set_property("caps", Gst.Caps.from_string("audio/x-raw,format=F32LE,channels=2"))
+        self.matrix = Gst.ElementFactory.make("audiomixmatrix")
+        self.matrix.set_property("in-channels", 2)
+        self.matrix.set_property("out-channels", 2)
+        self.matrix.set_property("channel-mask", 0x3)
+        self.limiter = Gst.ElementFactory.make("audiodynamic")
+        self.limiter.set_property("characteristics", "hard-knee")
+        self.limiter.set_property("mode", "compressor")
+        self.limiter.set_property("threshold", LIMITER_THRESHOLD)
+        self.last = Gst.ElementFactory.make("audioconvert")
+        # The matrix must be valid before linking, or the element refuses to negotiate.
+        self.set_balance("stereo", 0.0)
+        self.set_limiter(True)
+        chain = [self.speedchanger, convert, caps, self.matrix, self.limiter, self.last]
+        for element in chain:
+            bin.add(element)
+        for a, b in zip(chain, chain[1:]):
+            a.link(b)
+        bin.add_pad(Gst.GhostPad.new("sink", self.speedchanger.get_static_pad("sink")))
+
+    def set_balance(self, mode, value):
+        self.balance = (mode, value)
+        Gst.util_set_object_arg(self.matrix, "matrix", matrix_string(balance_matrix(mode, value)))
+
+    def set_limiter(self, enabled):
+        self.limiter_enabled = enabled
+        # A ratio of 1 passes the signal through unchanged.
+        self.limiter.set_property("ratio", LIMITER_RATIO if enabled else 1.0)
+
+    def copy_settings_from(self, other):
+        for name in ("tempo", "pitch"):
+            self.speedchanger.set_property(name, other.speedchanger.get_property(name))
+        self.set_balance(*other.balance)
+        self.set_limiter(other.limiter_enabled)
+
+
 class Pipeline(Gst.Pipeline):
     def __init__(self, sink):
         Gst.Pipeline.__init__(self)
@@ -41,25 +135,12 @@ class Pipeline(Gst.Pipeline):
         self.add(self.playbin)
 
         bin = Gst.Bin()
-        self.speedchanger = Gst.ElementFactory.make("pitch")
-        if self.speedchanger is None:
-            myGtk.show_error(_("You need to install the Gstreamer soundtouch elements for "
-                    "play it slowly to. They are part of Gstreamer-plugins-bad. Consult the "
-                    "README if you need more information.")).run()
-            raise SystemExit()
-
-        bin.add(self.speedchanger)
+        self.effects = Effects(bin)
+        self.speedchanger = self.effects.speedchanger
 
         self.audiosink = Gst.parse_launch(sink)
-        #self.audiosink = Gst.ElementFactory.make(sink, "sink")
-
         bin.add(self.audiosink)
-        convert = Gst.ElementFactory.make("audioconvert")
-        bin.add(convert)
-        self.speedchanger.link(convert)
-        convert.link(self.audiosink)
-        sink_pad = Gst.GhostPad.new("sink", self.speedchanger.get_static_pad("sink"))
-        bin.add_pad(sink_pad)
+        self.effects.last.link(self.audiosink)
         self.playbin.set_property("audio-sink", bin)
         bus = self.get_bus()
         bus.add_signal_watch()
@@ -67,7 +148,7 @@ class Pipeline(Gst.Pipeline):
 
         self.eos = lambda: None
         self.error_shown = False
-
+        self.exports = []
     def on_message(self, bus, message):
         t = message.type
         if t == Gst.MessageType.EOS:
@@ -98,41 +179,48 @@ class Pipeline(Gst.Pipeline):
     def set_pitch(self, pitch):
         self.speedchanger.set_property("pitch", pitch)
 
-    def save_file(self, uri):
-        pipeline = Gst.Pipeline()
+    def set_balance(self, mode, value):
+        self.effects.set_balance(mode, value)
 
+    def set_limiter(self, enabled):
+        self.effects.set_limiter(enabled)
+
+    def save_file(self, source_uri, path, done):
+        """render source_uri with the current settings into path, encoded by its extension, then call done(error)"""
+        encoder = ENCODERS.get(os.path.splitext(path)[1].lower(), ENCODERS[".wav"])
+        pipeline = Gst.Pipeline()
         playbin = Gst.ElementFactory.make("playbin")
         pipeline.add(playbin)
-        playbin.set_property("uri", self.playbin.get_property("uri"))
+        playbin.set_property("uri", source_uri)
+        # Video in the source file is dropped instead of opening a window.
+        playbin.set_property("video-sink", Gst.ElementFactory.make("fakesink"))
 
         bin = Gst.Bin()
-
-        speedchanger = Gst.ElementFactory.make("pitch")
-        speedchanger.set_property("tempo", self.speedchanger.get_property("tempo"))
-        speedchanger.set_property("pitch", self.speedchanger.get_property("pitch"))
-        bin.add(speedchanger)
-
-        audioconvert = Gst.ElementFactory.make("audioconvert")
-        bin.add(audioconvert)
-
-        encoder = Gst.ElementFactory.make("wavenc")
-        bin.add(encoder)
-
+        effects = Effects(bin)
+        effects.copy_settings_from(self.effects)
+        encode = Gst.parse_bin_from_description(encoder, True)
         filesink = Gst.ElementFactory.make("filesink")
+        filesink.set_property("location", path)
+        bin.add(encode)
         bin.add(filesink)
-        filesink.set_property("location", uri)
-
-        speedchanger.link(audioconvert)
-        audioconvert.link(encoder)
-        encoder.link(filesink)
-
-        sink_pad = Gst.GhostPad.new("sink", speedchanger.get_static_pad("sink"))
-        bin.add_pad(sink_pad)
+        effects.last.link(encode)
+        encode.link(filesink)
         playbin.set_property("audio-sink", bin)
 
-        pipeline.set_state(Gst.State.PLAYING)
+        def on_message(bus, message):
+            if message.type in (Gst.MessageType.EOS, Gst.MessageType.ERROR):
+                error = message.parse_error()[0].message if message.type == Gst.MessageType.ERROR else None
+                bus.remove_signal_watch()
+                pipeline.set_state(Gst.State.NULL)
+                self.exports.remove(pipeline)
+                done(error)
 
-        return (pipeline, playbin)
+        bus = pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message", on_message)
+        # Keep a reference until it finishes, or the export is garbage collected mid-way.
+        self.exports.append(pipeline)
+        pipeline.set_state(Gst.State.PLAYING)
 
     def set_file(self, uri):
         self.error_shown = False

@@ -6,7 +6,8 @@ script:
   - make install DESTDIR=AppDir PREFIX=/usr PYTHONDIR=/usr/lib/python3/dist-packages
   # Ubuntu's yt-dlp falls behind YouTube quickly, so bundle the current release.
   - python3 -m pip install --no-deps --target AppDir/usr/lib/python3/dist-packages yt-dlp
-  - mkdir -p AppDir/usr/bin && printf '#!/bin/sh\nexec python3 -m yt_dlp "$@"\n' > AppDir/usr/bin/yt-dlp && chmod +x AppDir/usr/bin/yt-dlp
+  # It runs the bundled Python beside it, never whichever python3 comes first on the user's PATH.
+  - mkdir -p AppDir/usr/bin && printf '#!/bin/sh\nexec "$(dirname "$0")/python3" -m yt_dlp "$@"\n' > AppDir/usr/bin/yt-dlp && chmod +x AppDir/usr/bin/yt-dlp
 
 AppDir:
   path: ./AppDir

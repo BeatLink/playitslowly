@@ -393,8 +393,8 @@ class MainWindow(Gtk.Window):
         self.save_config()
 
     def back(self, sender, amount=None):
-        position, fmt = self.pipeline.playbin.query_position(TIME_FORMAT)
-        if position is None:
+        ok, position = self.pipeline.playbin.query_position(TIME_FORMAT)
+        if not ok:
             return
         if amount:
             t = self.pipeline.song_time(position)-amount
@@ -417,12 +417,11 @@ class MainWindow(Gtk.Window):
         if self.seeking:
             return self.play_button.get_active()
 
-        _, position = self.pipeline.playbin.query_position(TIME_FORMAT)
-        _, duration = self.pipeline.playbin.query_duration(TIME_FORMAT)
-        if position is None or duration is None:
-            return self.play_button.get_active()
-        position = position
-        duration = duration
+        ok_position, position = self.pipeline.playbin.query_position(TIME_FORMAT)
+        ok_duration, duration = self.pipeline.playbin.query_duration(TIME_FORMAT)
+        # Queries fail for a moment after a file loads, so keep polling until they succeed.
+        if not (ok_position and ok_duration) or duration <= 0:
+            return True
         position = self.pipeline.song_time(position)
         duration = self.pipeline.song_time(duration)
 

@@ -1,0 +1,107 @@
+# Builds the deb, rpm, Flatpak and AppImage, starts each on a test tone, and attaches them to a release for v* tags.
+name: Packages
+
+on:
+  push:
+    branches: [master, "worktree-*"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  deb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y debhelper dh-python devscripts xvfb
+      - name: Build
+        run: |
+          dpkg-buildpackage -us -uc -b
+          mkdir -p dist && mv ../playitslowly_*.deb dist/
+      - name: Install and start
+        run: |
+          sudo apt-get install -y ./dist/playitslowly_*.deb
+          packaging/smoke-test.sh playitslowly
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+
+  rpm:
+    runs-on: ubuntu-24.04
+    container: fedora:43
+    steps:
+      - name: Install build tools
+        run: dnf install -y git rpm-build make python3-devel desktop-file-utils libappstream-glib xorg-x11-server-Xvfb xvfb-run
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          make dist
+          mkdir -p ~/rpmbuild/SOURCES dist
+          mv playitslowly-*.tar.gz ~/rpmbuild/SOURCES/
+          rpmbuild -ba packaging/rpm/playitslowly.spec
+          cp ~/rpmbuild/RPMS/noarch/*.rpm dist/
+      - name: Install and start
+        run: |
+          dnf install -y ./dist/*.rpm
+          packaging/smoke-test.sh playitslowly
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: dist/*.rpm
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: playitslowly.flatpak
+          manifest-path: packaging/flatpak/ch.x29a.playitslowly.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+      - name: Start
+        run: |
+          dnf install -y xorg-x11-server-Xvfb xvfb-run || true
+          flatpak-builder --run flatpak_app packaging/flatpak/ch.x29a.playitslowly.yml sh -c 'gst-inspect-1.0 pitch > /dev/null && gst-inspect-1.0 audiomixmatrix > /dev/null && python3 -c "import numpy, yt_dlp"'
+          TMPDIR="$GITHUB_WORKSPACE" packaging/smoke-test.sh flatpak-builder --run flatpak_app packaging/flatpak/ch.x29a.playitslowly.yml playitslowly
+
+  appimage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install appimage-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip patchelf desktop-file-utils libgdk-pixbuf2.0-dev fakeroot squashfs-tools strace gtk-update-icon-cache zsync xvfb
+          sudo pip3 install --break-system-packages appimage-builder==1.1.0 "packaging<22"
+      - name: Build
+        run: |
+          export APP_VERSION=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' playitslowly/app.py)
+          appimage-builder --recipe packaging/appimage/AppImageBuilder.yml --skip-test
+          mkdir -p dist && mv ./*.AppImage dist/
+      - name: Start
+        run: packaging/smoke-test.sh dist/*.AppImage --appimage-extract-and-run
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: dist/*.AppImage
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [deb, rpm, flatpak, appimage]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

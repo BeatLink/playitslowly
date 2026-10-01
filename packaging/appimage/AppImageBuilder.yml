@@ -1,0 +1,73 @@
+# Builds Play it Slowly as an AppImage from Ubuntu 24.04 packages; run from the repository root.
+version: 1
+
+script:
+  - rm -rf AppDir
+  - make install DESTDIR=AppDir PREFIX=/usr PYTHONDIR=/usr/lib/python3/dist-packages
+  # Ubuntu's yt-dlp falls behind YouTube quickly, so bundle the current release.
+  - python3 -m pip install --no-deps --target AppDir/usr/lib/python3/dist-packages yt-dlp
+  - mkdir -p AppDir/usr/bin && printf '#!/bin/sh\nexec python3 -m yt_dlp "$@"\n' > AppDir/usr/bin/yt-dlp && chmod +x AppDir/usr/bin/yt-dlp
+
+AppDir:
+  path: ./AppDir
+  app_info:
+    id: ch.x29a.playitslowly
+    name: Play it Slowly
+    icon: ch.x29a.playitslowly
+    version: !ENV ${APP_VERSION}
+    exec: usr/bin/python3
+    exec_args: "-m playitslowly.app $@"
+
+  apt:
+    arch: amd64
+    allow_unauthenticated: true
+    sources:
+      - sourceline: deb http://archive.ubuntu.com/ubuntu/ noble main universe
+      - sourceline: deb http://archive.ubuntu.com/ubuntu/ noble-updates main universe
+    include:
+      - python3
+      - python3-gi
+      - python3-gi-cairo
+      - python3-numpy
+      - gir1.2-gtk-3.0
+      - gir1.2-gstreamer-1.0
+      - gir1.2-gst-plugins-base-1.0
+      - gstreamer1.0-plugins-base
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-plugins-bad
+      - gstreamer1.0-libav
+      - gstreamer1.0-pulseaudio
+      - gstreamer1.0-alsa
+      - librsvg2-common
+      - libgtk-3-common
+      - adwaita-icon-theme
+      - ffmpeg
+    exclude:
+      - humanity-icon-theme
+      - hicolor-icon-theme
+      - dmsetup
+      - systemd
+      - libsystemd0
+      - perl
+      - perl-base
+
+  files:
+    exclude:
+      - usr/share/man
+      - usr/share/doc
+      - usr/share/lintian
+      - usr/share/info
+
+  runtime:
+    env:
+      PYTHONHOME: ${APPDIR}/usr
+      PYTHONPATH: ${APPDIR}/usr/lib/python3/dist-packages
+      PATH: ${APPDIR}/usr/bin:${PATH}
+      GI_TYPELIB_PATH: ${APPDIR}/usr/lib/x86_64-linux-gnu/girepository-1.0
+      GSETTINGS_SCHEMA_DIR: ${APPDIR}/usr/share/glib-2.0/schemas
+      GST_PLUGIN_SYSTEM_PATH_1_0: ${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+      GST_PLUGIN_SCANNER_1_0: ${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner
+
+AppImage:
+  arch: x86_64
+  update-information: guess

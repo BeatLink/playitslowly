@@ -1,0 +1,93 @@
+app-id: ch.x29a.playitslowly
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: playitslowly
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # Downloads the audio of YouTube videos.
+  - --share=network
+  # Opens and saves audio files anywhere in the home folder.
+  - --filesystem=home
+add-extensions:
+  # Codecs such as AAC that the runtime leaves out.
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '25.08'
+    add-ld-path: .
+    autodelete: false
+cleanup-commands:
+  - mkdir -p /app/lib/ffmpeg
+
+modules:
+  - name: soundtouch
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSOUNDSTRETCH=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share
+    sources:
+      - type: archive
+        url: https://codeberg.org/soundtouch/soundtouch/archive/2.3.3.tar.gz
+        sha256: 06c00f37d28e5984944951c20d0845c7931e691c59820922230915d205131a47
+
+  # Only the plugins the runtime lacks: soundtouch's "pitch" and audiomixmatrix.
+  - name: gst-plugins-bad-extra
+    buildsystem: meson
+    config-opts:
+      - -Dauto_features=disabled
+      - -Dsoundtouch=enabled
+      - -Daudiomixmatrix=enabled
+      - -Dexamples=disabled
+      - -Dtests=disabled
+      - -Dintrospection=disabled
+      - -Dgpl=enabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/libgst*
+      - /share
+    sources:
+      - type: archive
+        url: https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.26.11.tar.xz
+        sha256: 110fb82795f0e569b1e27b12ab9699d35c7762e1ff4db95335d6ac8d1442af3d
+
+  - name: python3-numpy
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --find-links=file://${PWD} --prefix=${FLATPAK_DEST} numpy
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://files.pythonhosted.org/packages/3a/1b/3b16a9bc514a440a7a0883684111dcb1ef1aee960af2ca95da8fc775f124/numpy-2.5.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        sha256: a5fa86b80fd24bcd1aff83ad23be44ea323de3f787be8f8b15d4a65621e25321
+      - type: file
+        only-arches: [aarch64]
+        url: https://files.pythonhosted.org/packages/73/85/735720d04ec197c5dcfacdfc9922667c7f1f5f496a279b7ba4d7c74c4cc7/numpy-2.5.3-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl
+        sha256: c76d5dde9f445058f83d0c02af00557a4db91de9a9a57c0df87d1535001d654b
+
+  - name: python3-yt-dlp
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --find-links=file://${PWD} --prefix=${FLATPAK_DEST} yt-dlp
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl
+        sha256: 1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf
+
+  - name: playitslowly
+    buildsystem: simple
+    build-commands:
+      - make install PREFIX=${FLATPAK_DEST}
+    sources:
+      - type: dir
+        path: ../..

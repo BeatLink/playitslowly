@@ -109,6 +109,7 @@ class MainWindow(Gtk.Window):
         self.add_accel_group(self.accel_group)
 
         self.pipeline = Pipeline(sink)
+        self.pipeline.eos = self.on_eos
 
         self.filedialog = myGtk.FileChooserDialog(None, self, Gtk.FileChooserAction.OPEN)
         self.filedialog.connect("response", self.filechanged)
@@ -404,9 +405,17 @@ class MainWindow(Gtk.Window):
             t = self.startchooser.get_value()
         self.seek(t)
 
+    def on_eos(self):
+        """loop back to the start position when playback reaches the end of the track"""
+        if self.play_button.get_active():
+            self.seek(self.startchooser.get_value())
+
     def play(self, sender):
         if sender.get_active():
-            self.pipeline.set_file(self.filedialog.get_uri())
+            uri = self.filedialog.get_uri()
+            # Re-setting the same uri queues it as the next gapless track, which hides the end of the stream.
+            if self.pipeline.playbin.get_property("current-uri") != uri:
+                self.pipeline.set_file(uri)
             self.pipeline.play()
             GObject.timeout_add(100, self.update_position)
         else:

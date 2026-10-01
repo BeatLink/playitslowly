@@ -61,17 +61,17 @@ class Pipeline(Gst.Pipeline):
         sink_pad = Gst.GhostPad.new("sink", self.speedchanger.get_static_pad("sink"))
         bin.add_pad(sink_pad)
         self.playbin.set_property("audio-sink", bin)
-        #bus = self.playbin.get_bus()
-        #bus.add_signal_watch()
-        #bus.connect("message", self.on_message)
+        bus = self.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message", self.on_message)
 
         self.eos = lambda: None
 
     def on_message(self, bus, message):
         t = message.type
-        if t == Gst.MESSAGE_EOS:
+        if t == Gst.MessageType.EOS:
             self.eos()
-        elif t == Gst.MESSAGE_ERROR:
+        elif t == Gst.MessageType.ERROR:
             myGtk.show_error("Gstreamer error: %s - %s" % message.parse_error())
 
     def set_volume(self, volume):

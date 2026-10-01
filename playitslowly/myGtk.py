@@ -418,12 +418,12 @@ class ExceptionDialog(Gtk.MessageDialog):
 def install_exception_hook(dialog=ExceptionDialog):
     old_hook = sys.excepthook
     def new_hook(etype, evalue, etb):
+        # Print first, since the dialog below waits until someone closes it.
+        old_hook(etype, evalue, etb)
         if etype not in (KeyboardInterrupt, SystemExit):
-            print(etype)
             d = dialog(etype, evalue, etb)
             d.run()
             d.destroy()
-        old_hook(etype, evalue, etb)
     new_hook.old_hook = old_hook
     sys.excepthook = new_hook
 

@@ -66,9 +66,10 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
       - name: Start
         run: |
-          dnf install -y xorg-x11-server-Xvfb xvfb-run || true
-          flatpak-builder --run flatpak_app packaging/flatpak/ch.x29a.playitslowly.yml sh -c 'gst-inspect-1.0 pitch > /dev/null && gst-inspect-1.0 audiomixmatrix > /dev/null && python3 -c "import numpy, yt_dlp"'
-          TMPDIR="$GITHUB_WORKSPACE" packaging/smoke-test.sh flatpak-builder --run flatpak_app packaging/flatpak/ch.x29a.playitslowly.yml playitslowly
+          # The container has no machine id or FUSE, which flatpak-builder --run otherwise needs.
+          [ -s /etc/machine-id ] || tr -d - < /proc/sys/kernel/random/uuid > /etc/machine-id
+          flatpak-builder --disable-rofiles-fuse --run flatpak_app packaging/flatpak/ch.x29a.playitslowly.yml sh -c 'gst-inspect-1.0 pitch > /dev/null && gst-inspect-1.0 audiomixmatrix > /dev/null && python3 -c "import numpy, yt_dlp"'
+          TMPDIR="$GITHUB_WORKSPACE" packaging/smoke-test.sh flatpak-builder --disable-rofiles-fuse --run flatpak_app packaging/flatpak/ch.x29a.playitslowly.yml playitslowly
 
   appimage:
     runs-on: ubuntu-24.04
